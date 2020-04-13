@@ -17,8 +17,8 @@ from moviepy.editor import *
 def data(file):
     """
         Function that load the json file with all the data and treat them to return
-        two dataframes and likeCount,commentCount,...columns rescalled for the score
-        calculation.
+        original dataframe and a shorter one and likeCount,commentCount,...
+        columns rescalled for the score calculation.
         INPUT: json file
         OUTPUT; dataframes and columns
     """
@@ -58,22 +58,26 @@ def generateLinkFromId(videoId):
     tree = html.fromstring(page.content)
     buyers = tree.xpath('//*[@id="main"]/div/div/div[1]/div/div/div/div[2]/div[1]/video/@src')
     return buyers[0]
-def download(df):
+def download(df_shorter):
     """
-        
+        Functions to download videos selected using urls.
+        INPUT: DataFrame
+        OUTPUT: list of videos dowloaded and stored on the folder
     """
     path = os.getcwd()+'\\'
-    df['urls'] = df['id'].apply(lambda x: generateLinkFromId(x))
+    df_shorter['urls'] = df_shorter['id'].apply(lambda x: generateLinkFromId(x))
     vid_dl = []
     i = 1
-    for u in df['urls']:
+    for u in df_shorter['urls']:
         name = str(i)+'.mp4'
         vid_dl.append(wget.download(u,path+name))
         i = i+1
     return vid_dl
 def merge(vidlist):
     """
-
+        Function to merge videos dowloaded in one video.
+        INPUT: list of videos downloaded
+        OUTPUT: One video (not stored as variable)
     """
     today = date.today()
     d = today.strftime("%Y_%m_%d")
@@ -85,7 +89,8 @@ def merge(vidlist):
     finalrender.write_videofile('TiktokCompile'+d+'.mp4',codec='libx264')
 def update(df,df_shorter):
     """
-
+        Function to update videoUsed and videoUsedDate info in the original dataframe
+        and save it as json.
     """
     today = date.today()
     d = today.strftime("%Y_%m_%d")
@@ -95,12 +100,10 @@ def update(df,df_shorter):
     df.to_json(r'dataVideo'+d+'.json')
 
 
-#Manipulate data
-
 #Import and manip dataVideo
 df,df_shorter,likeCount,playCount,shareCount,commentCount  = data('dataVideo.json')
 #Select x best videos and download them
-df_shorter = select(df_shorter)
+df_shorter = select(df_shorter,likeCount,playCount,shareCount,commentCount)
 vid_dl = download(df_shorter)
 #merge videos
 merge(vid_dl)
