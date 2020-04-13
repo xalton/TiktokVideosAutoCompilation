@@ -172,7 +172,6 @@ def importTrendingDataToDB():
     getTrendingUrl()
     #send request to retrieve the data
     sendRequest()
-
 def importChallengeDataToDB():
 
     #importing everything for the python version of Pupetteer
@@ -460,6 +459,9 @@ def merge(vidlist):
     for vid in vidlist:
         if vid.endswith(".mp4"):
             clips.append(VideoFileClip(vid))
+    m = max(c.h for c in clips)
+    clips = [c.resize(width=m) for c in clips]
+    #print(clips[0].size)
     finalrender = concatenate_videoclips(clips,method='compose')
     finalrender.write_videofile('TiktokCompile'+d+'.mp4',codec='libx264')
 def update(df,df_shorter):
@@ -472,7 +474,7 @@ def update(df,df_shorter):
     for id in df_shorter['id']:
         df.loc[df['id'] == id,'VideoUsed'] = True
         df.loc[df['id'] == id,'VideoDate'] = d
-    df.to_json(r'dataVideo'+d+'.json')
+    df.to_json(r'dataVideo'+d+'.txt')
 
 
 
@@ -485,15 +487,15 @@ def update(df,df_shorter):
 #import new challenge data in the DB
 #importChallengeDataToDB()
 #Import and manip dataVideo
-
+#nbvideos = int(input('ENTER THE NUMBER OF VIDEOS:'))
 df,df_shorter,likeCount,playCount,shareCount,commentCount  = data('dataVideo.txt')
 #Select x best videos and download them
-df_shorter = select(df_shorter,likeCount,playCount,shareCount,commentCount,15)
+df_shorter = select(df_shorter,likeCount,playCount,shareCount,commentCount,3)
 #print(df_shorter)
-#vid_dl = download(df_shorter)
+vid_dl = download(df_shorter)
 #merge videos
-#merge(vid_dl)
+merge(vid_dl)
 #Check ID of selected videos and updtate videoUsed status
-#update(df,df_shorter)
+update(df,df_shorter)
 
 #publish on YT
