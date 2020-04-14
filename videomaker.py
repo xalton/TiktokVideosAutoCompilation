@@ -14,6 +14,10 @@ from lxml import html
 from datetime import date
 from moviepy.editor import *
 
+#global variable for the trending urls (should be avoided)
+trendingUrl1 = ''
+trendingUrl2 = ''
+discoverUrl = ''
 
 #Functions
 def importTrendingDataToDB():
@@ -46,7 +50,6 @@ def importTrendingDataToDB():
         dic['shareCount'] = data['itemInfos']['shareCount']
         dic['playCount'] = data['itemInfos']['playCount']
         dic['commentCount'] = data['itemInfos']['commentCount']
-        dic['url'] = data['itemInfos']['video']['urls'][0]
         dic['videoUsed'] = False
         dic['videoUsedDate'] = ''
         DB.append(dic)
@@ -298,7 +301,6 @@ def importChallengeDataToDB():
         dic['shareCount'] = data['itemInfos']['shareCount']
         dic['playCount'] = data['itemInfos']['playCount']
         dic['commentCount'] = data['itemInfos']['commentCount']
-        dic['url'] = data['itemInfos']['video']['urls'][0]
         dic['videoUsed'] = False
         dic['videoUsedDate'] = ''
         if challenge not in dataVideo:
@@ -400,7 +402,7 @@ def loadDbIntoDf(file):
         videos_dict = json.load(f)
     df = pd.DataFrame.from_dict(videos_dict)
     df_shorter = df[df.videoUsed == False] #take only videos no used before
-    df_shorter = df_shorter.drop(columns=['url','timeCreated','videoUsed','videoUsedDate']) #bug
+    df_shorter = df_shorter.drop(columns=['timeCreated','videoUsed','videoUsedDate']) #bug
     columns_name = ['id','commentCount','likeCount','playCount','shareCount']
     df_shorter = df_shorter.reindex(columns=columns_name)
     likeCount = df_shorter['likeCount']/df_shorter['likeCount'].max()
@@ -481,25 +483,20 @@ def update(df,df_shorter):
     df.to_json(r'dataVideo.txt',orient="records")
 
 
-
-#global variable for the trending urls (should be avoided)
-trendingUrl1 = ''
-trendingUrl2 = ''
-discoverUrl = ''
 #import new trending data in the DB
-#importTrendingDataToDB()
+importTrendingDataToDB()
 #import new challenge data in the DB
 #importChallengeDataToDB()
 #Import and manip dataVideo
 #nbvideos = int(input('ENTER THE NUMBER OF VIDEOS:'))
 
-df,df_shorter,likeCount,playCount,shareCount,commentCount  = loadDbIntoDf('dataVideo.txt')
+#df,df_shorter,likeCount,playCount,shareCount,commentCount  = loadDbIntoDf('dataVideo.txt')
 # #Select x best videos and download them
-df_shorter = select(df_shorter,likeCount,playCount,shareCount,commentCount,20)
+#df_shorter = select(df_shorter,likeCount,playCount,shareCount,commentCount,20)
 # #print(df_shorter)
-vid_dl = download(df_shorter)
+#vid_dl = download(df_shorter)
 # #merge videos
-merge(vid_dl)
+#merge(vid_dl)
 # #Check ID of selected videos and updtate videoUsed status
 # update(df,df_shorter)
 # #publish on YT
