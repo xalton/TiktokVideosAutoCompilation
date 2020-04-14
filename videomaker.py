@@ -462,7 +462,7 @@ def merge(vidlist):
         if vid.endswith(".mp4"):
             clips.append(VideoFileClip(vid))
     m = max(c.h for c in clips)
-    clips = [c.resize(width=m) for c in clips]
+    clips = [c.resize(height=m) for c in clips]
     #print(clips[0].size)
     finalrender = concatenate_videoclips(clips,method='compose')
     finalrender.write_videofile('TiktokCompile'+d+'.mp4',codec='libx264')
@@ -483,9 +483,9 @@ def update(df,df_shorter):
 
 
 #global variable for the trending urls (should be avoided)
-#trendingUrl1 = ''
-#trendingUrl2 = ''
-#discoverUrl = ''
+trendingUrl1 = ''
+trendingUrl2 = ''
+discoverUrl = ''
 #import new trending data in the DB
 #importTrendingDataToDB()
 #import new challenge data in the DB
@@ -494,12 +494,12 @@ def update(df,df_shorter):
 #nbvideos = int(input('ENTER THE NUMBER OF VIDEOS:'))
 
 df,df_shorter,likeCount,playCount,shareCount,commentCount  = loadDbIntoDf('dataVideo.txt')
-#Select x best videos and download them
+# #Select x best videos and download them
 df_shorter = select(df_shorter,likeCount,playCount,shareCount,commentCount,20)
-#print(df_shorter)
+# #print(df_shorter)
 vid_dl = download(df_shorter)
-#merge videos
+# #merge videos
 merge(vid_dl)
-#Check ID of selected videos and updtate videoUsed status
-update(df,df_shorter)
-#publish on YT
+# #Check ID of selected videos and updtate videoUsed status
+# update(df,df_shorter)
+# #publish on YT
