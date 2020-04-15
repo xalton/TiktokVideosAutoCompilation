@@ -26,7 +26,7 @@ def importTrendingDataToDB():
     OUTPUT: writing the data into the txt file
     """
 
-    def checkDataInDB(videoID, DB):
+    def checkDataInDB(videoID):
         """function to check if the video already exist in the DB
         INPUT: id of the video we check, DB with all the video already saved
         OUTPUT: if the id is found, return the position in the list. If the id is not found return False
@@ -37,7 +37,7 @@ def importTrendingDataToDB():
                 return index
         return False
 
-    def addInDB(DB, data):
+    def addInDB(data):
         """function to add a new video in the DB
         INPUT: DB, data of the video to add
         OUTPUT: DB with new data
@@ -55,11 +55,11 @@ def importTrendingDataToDB():
         DB.append(dic)
         print('added data in db')
         #writing the output json in a txt file
-        return DB
+        #return DB
         #with open('dataVideo.txt', 'w') as outfile:
         #    json.dump(DB, outfile)
 
-    def updateDataDB(DB, data, videoIndex):
+    def updateDataDB(data, videoIndex):
         """function to update the data of video that already exist in the DB
         INPUT: DB, data for video to update, index of the video to update in DB list
         OUTPUT: updated DB
@@ -70,7 +70,7 @@ def importTrendingDataToDB():
         DB[videoIndex]['playCount'] = data['itemInfos']['playCount']
         DB[videoIndex]['commentCount'] = data['itemInfos']['commentCount']
         print('updated data in db')
-        return DB
+        #return DB
         #writing the output json in txt file
         #with open('dataVideo.txt', 'w') as outfile:
         #    json.dump(DB, outfile)
@@ -81,8 +81,8 @@ def importTrendingDataToDB():
         OUTPUT: dispatch to function to write in DB
         """
         #load data from txt file
-        with open('dataVideo.txt') as f:
-            dataVideo = json.load(f)
+        #with open('dataVideo.txt') as f:
+        #    dataVideo = json.load(f)
         # extracting data in json format
         data = requestData.json()
 
@@ -90,14 +90,14 @@ def importTrendingDataToDB():
             #looping through each video in the response json
             for video in data['body']['itemListData']:
                 #check if the DB is already in the DB
-                videoIndex = checkDataInDB(video['itemInfos']['id'], dataVideo)
+                videoIndex = checkDataInDB(video['itemInfos']['id'])
                 #add or update the data in the DB
                 if videoIndex == False:
-                    dataVideo = addInDB(dataVideo, video)
+                    addInDB(video)
                 else:
-                    dataVideo = updateDataDB(dataVideo, video, videoIndex)
-                with open('dataVideo.txt', 'w') as outfile:
-                    json.dump(dataVideo, outfile)
+                    updateDataDB(video, videoIndex)
+                #with open('dataVideo.txt', 'w') as outfile:
+                #    json.dump(dataVideo, outfile)
         else:
             print("no body")
 
@@ -148,7 +148,7 @@ def importTrendingDataToDB():
             await page.goto('https://www.tiktok.com/trending/?lang=en')
             #scroll down to trigger the second request to get trending video data
             await page.evaluate("""{window.scrollBy(0, document.body.scrollHeight);}""")
-            await page.waitFor(2000)
+            await page.waitFor(1000)
             await browser.close()
 
         asyncio.get_event_loop().run_until_complete(main())
@@ -175,10 +175,21 @@ def importTrendingDataToDB():
             requestData = session.get(url = trendingUrl2, headers=headers)
             dataToDB(requestData)
 
+    #load data from txt file
+    with open('dataVideo.txt') as f:
+        DB = json.load(f)
+    
     #save the signed trending url in global variable
     getTrendingUrl()
     #send request to retrieve the data
     sendRequest()
+    with open('dataVideo.txt', 'w') as outfile:
+            json.dump(DB, outfile)
+    #load data from txt file
+    with open('dataVideo.txt') as f:
+        dataVideo = json.load(f)
+    print("Number of records in DB:", len(dataVideo))
+
 def importChallengeDataToDB():
 
     #importing everything for the python version of Pupetteer
