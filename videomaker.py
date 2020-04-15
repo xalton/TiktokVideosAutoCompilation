@@ -40,7 +40,7 @@ def importTrendingDataToDB():
     def addInDB(DB, data):
         """function to add a new video in the DB
         INPUT: DB, data of the video to add
-        OUTPUT: new video is saved in the txt file
+        OUTPUT: DB with new data
         """
         #extracting the info we want to save
         dic = {}
@@ -55,13 +55,14 @@ def importTrendingDataToDB():
         DB.append(dic)
         print('added data in db')
         #writing the output json in a txt file
-        with open('dataVideo.txt', 'w') as outfile:
-            json.dump(DB, outfile)
+        return DB
+        #with open('dataVideo.txt', 'w') as outfile:
+        #    json.dump(DB, outfile)
 
     def updateDataDB(DB, data, videoIndex):
         """function to update the data of video that already exist in the DB
         INPUT: DB, data for video to update, index of the video to update in DB list
-        OUTPUT: video data updated in the txt file
+        OUTPUT: updated DB
         """
         #updating data with latest data
         DB[videoIndex]['likeCount'] = data['itemInfos']['diggCount']
@@ -69,9 +70,10 @@ def importTrendingDataToDB():
         DB[videoIndex]['playCount'] = data['itemInfos']['playCount']
         DB[videoIndex]['commentCount'] = data['itemInfos']['commentCount']
         print('updated data in db')
+        return DB
         #writing the output json in txt file
-        with open('dataVideo.txt', 'w') as outfile:
-            json.dump(DB, outfile)
+        #with open('dataVideo.txt', 'w') as outfile:
+        #    json.dump(DB, outfile)
 
     def dataToDB(requestData):
         """function to process the data from the trending request
@@ -91,9 +93,11 @@ def importTrendingDataToDB():
                 videoIndex = checkDataInDB(video['itemInfos']['id'], dataVideo)
                 #add or update the data in the DB
                 if videoIndex == False:
-                    addInDB(dataVideo, video)
+                    dataVideo = addInDB(dataVideo, video)
                 else:
-                    updateDataDB(dataVideo, video, videoIndex)
+                    dataVideo = updateDataDB(dataVideo, video, videoIndex)
+                with open('dataVideo.txt', 'w') as outfile:
+                    json.dump(dataVideo, outfile)
         else:
             print("no body")
 
