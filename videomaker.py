@@ -418,13 +418,13 @@ def loadDbIntoDf(file):
         videos_dict = json.load(f)
     df = pd.DataFrame.from_dict(videos_dict)
     df_shorter = df[df.videoUsed == False] #take only videos no used before
-    df_shorter = df_shorter.drop(columns=['timeCreated','videoUsed','videoUsedDate']) #bug
+    df_shorter = df_shorter.drop(columns=['timeCreated','videoUsed','videoUsedDate'])
     columns_name = ['id','commentCount','likeCount','playCount','shareCount']
     df_shorter = df_shorter.reindex(columns=columns_name)
     df_shorter = df_shorter.apply(lambda x: x/x.max() if x.name in columns_name[1:] else x)
     return df,df_shorter
 
-def select(df_shorter,nbvideos):#,likeCount, playCount, shareCount, commentCount, nbvideos=10):
+def select(df_shorter,nbvideos):
     """
         Function to select a range of best videos according to the value of its score
         defined as combinaton of likeCount, playCount, shareCount and commentCount
@@ -501,7 +501,7 @@ def update(df,df_shorter):
 ######################
 ### Initialization ###
 ######################
-
+start_time = time.time()
 print('######################')
 print('### Initialization ###')
 print('######################')
@@ -540,10 +540,11 @@ merge(vid_dl)
 ### Check ID of selected videos and updtate videoUsed status ###
 update(df,df_shorter)
 print('Processing is done... ')
-
+print("--- %s seconds ---" % (time.time() - start_time))
 print('')
 print('############')
 print('### DONE ###')
 print('############')
+
 ############
 ### Publish on YT ###
