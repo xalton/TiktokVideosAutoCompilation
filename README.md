@@ -1,4 +1,4 @@
-# TiktokV ideos AutoCompilation Project
+# Tiktok  Videos AutoCompilation Project
 
 Everyday, we ( made an automatique compiled video of the best Tiktok from the trending list and other categories. 
 We select those videos according to a "ranking algo" (to be improve). You can see all videos on  [Youtube](https://www.youtube.com/channel/UCpbFh9sU36HmfcaCgTJeSgg)  
