@@ -1,7 +1,10 @@
 
 #!/usr/bin/python3
 
-#Modules
+###############
+### Modules ###
+###############
+
 import os
 import json
 import wget
@@ -14,12 +17,10 @@ from lxml import html
 from datetime import date
 from moviepy.editor import *
 
-#global variable for the trending urls (should be avoided)
-trendingUrl1 = ''
-trendingUrl2 = ''
-discoverUrl = ''
+#################
+### Functions ###
+#################
 
-#Functions
 def importTrendingDataToDB():
     """function to save the trending video data in the DB. If the video ID already exist, the data gets updated
     INPUT:
@@ -178,7 +179,7 @@ def importTrendingDataToDB():
     #load data from txt file
     with open('dataVideo.txt') as f:
         DB = json.load(f)
-    
+
     #save the signed trending url in global variable
     getTrendingUrl()
     #send request to retrieve the data
@@ -420,13 +421,10 @@ def loadDbIntoDf(file):
     df_shorter = df_shorter.drop(columns=['timeCreated','videoUsed','videoUsedDate']) #bug
     columns_name = ['id','commentCount','likeCount','playCount','shareCount']
     df_shorter = df_shorter.reindex(columns=columns_name)
-    likeCount = df_shorter['likeCount']/df_shorter['likeCount'].max()
-    playCount = df_shorter['playCount']/df_shorter['playCount'].max()
-    shareCount = df_shorter['shareCount']/df_shorter['shareCount'].max()
-    commentCount = df_shorter['commentCount']/df_shorter['commentCount'].max()
-    return df,df_shorter,likeCount,playCount,shareCount,commentCount
-    
-def select(df_shorter,likeCount, playCount, shareCount, commentCount, nbvideos=10):
+    df_shorter = df_shorter.apply(lambda x: x/x.max() if x.name in columns_name[1:] else x)
+    return df,df_shorter
+
+def select(df_shorter,nbvideos):#,likeCount, playCount, shareCount, commentCount, nbvideos=10):
     """
         Function to select a range of best videos according to the value of its score
         defined as combinaton of likeCount, playCount, shareCount and commentCount
@@ -434,12 +432,13 @@ def select(df_shorter,likeCount, playCount, shareCount, commentCount, nbvideos=1
         OUTPUT: New DataFrame  with only x top videos sorted by score
 
     """
-    score = (35/100 * likeCount + 20/100*playCount + 35/100* shareCount + 10/100*commentCount)*100
+    score = (35/100 * df_shorter['likeCount'] + 20/100*df_shorter['playCount'] + 35/100* df_shorter['shareCount']
+    + 10/100*df_shorter['commentCount'])*100
     df_shorter['score'] = score
     df_shorter = df_shorter.sort_values('score',ascending=False)
     df_shorter = df_shorter.head(nbvideos)
-    #df_shorter = df_shorter[df_shorter.score > 30]
     return df_shorter
+
 def generateLinkFromId(videoId):
     """
         function to generate a valid link to download a video from a video ID. Link is extracted from html trending page
@@ -451,6 +450,7 @@ def generateLinkFromId(videoId):
     tree = html.fromstring(page.content)
     buyers = tree.xpath('//*[@id="main"]/div/div/div[1]/div/div/div/div[2]/div[1]/video/@src')
     return buyers[0]
+
 def download(df_shorter):
     """
         Functions to download videos selected using urls.
@@ -466,6 +466,7 @@ def download(df_shorter):
         vid_dl.append(wget.download(u,path+name))
         i = i+1
     return vid_dl
+
 def merge(vidlist):
     """
         Function to merge videos dowloaded in one video.
@@ -497,21 +498,52 @@ def update(df,df_shorter):
     print(df)
     df.to_json(r'dataVideo.txt',orient="records")
 
+######################
+### Initialization ###
+######################
 
-#import new trending data in the DB
-importTrendingDataToDB()
-#import new challenge data in the DB
+print('######################')
+print('### Initialization ###')
+print('######################')
+print('')
+print('...')
+### Global variable for the trending urls (should be avoided) ###
+trendingUrl1 = ''
+trendingUrl2 = ''
+discoverUrl = ''
+
+### Import new trending data in the DB ###
+#importTrendingDataToDB()
+
+### Import new challenge data in the DB ###
 #importChallengeDataToDB()
-#Import and manip dataVideo
-#nbvideos = int(input('ENTER THE NUMBER OF VIDEOS:'))
 
-#df,df_shorter,likeCount,playCount,shareCount,commentCount  = loadDbIntoDf('dataVideo.txt')
-# #Select x best videos and download them
-#df_shorter = select(df_shorter,likeCount,playCount,shareCount,commentCount,20)
-# #print(df_shorter)
-#vid_dl = download(df_shorter)
-# #merge videos
-#merge(vid_dl)
-# #Check ID of selected videos and updtate videoUsed status
-# update(df,df_shorter)
-# #publish on YT
+### Import and manip dataVideo ###
+df,df_shorter = loadDbIntoDf('dataVideo.txt')
+print('Initialization is done...')
+print('')
+##################
+### Processing ###
+##################
+
+print('##################')
+print('### Processing ###')
+print('##################')
+print('')
+### Select x best videos and download them ###
+df_shorter = select(df_shorter,5)
+vid_dl = download(df_shorter)
+
+### merge videos ###
+merge(vid_dl)
+
+### Check ID of selected videos and updtate videoUsed status ###
+update(df,df_shorter)
+print('Processing is done... ')
+
+print('')
+print('############')
+print('### DONE ###')
+print('############')
+############
+### Publish on YT ###
