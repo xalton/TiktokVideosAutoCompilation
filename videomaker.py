@@ -21,6 +21,153 @@ from moviepy.editor import *
 ### Functions ###
 #################
 
+def checkDuplicates():
+    #load data from txt file
+    with open('dataVideo.txt') as f:
+        dataVideo = json.load(f)
+
+    #load data from txt file
+    with open('dataVideo.txt') as f:
+        dataVideo2 = json.load(f)
+
+    for index in dataVideo:
+        for index2 in dataVideo2:
+            if index["id"] == index2["id"]:
+                print("duplicate found", index2["id"])
+
+
+def importTrendingDataToDB2():
+
+    def getTrendingUrl():
+        """
+        function to generate the url with signature to retrieve the trending videos data. Trending page is opened in pyppeteer and all the requests url are captured
+        INPUT: /
+        OUTPUT: the urls are saved in the 2 global variable trendingUrl1 and trendingUrl2 and can be used to retrieve the trending data
+        """
+        #importing everything for the python version of Pupetteer
+        import asyncio
+        from pyppeteer import launch
+        from pyppeteer_stealth import stealth
+        import re
+
+        def checkUrl(url):
+            """function that receive all the request urls and filter on the url to retrieve the trending video data with the signature
+            INPUT: url from all the requests being made by the tiktok trending page
+            OUTPUT: the 2 url that are used to retrieve trending video data are saved in 2 global variables
+            """
+            #regex for the 2 types of url we are looking for
+            pattern = re.compile("https://m.tiktok.com/share/item/list\?secUid=&id=&type=5&count=30&minCursor=0&maxCursor=0.*")
+            pattern2 = re.compile("https://m.tiktok.com/share/item/list\?secUid=&id=&type=5&count=30&minCursor=0&maxCursor=1.*")
+            if pattern.match(url):
+                global trendingUrl1
+                trendingUrl1 = url
+                print('found trending url 1')
+            elif pattern2.match(url):
+                global trendingUrl2
+                trendingUrl2 = url
+                print('found trending url 2')
+            else:
+                pass
+                #print('not found')
+
+        async def main():
+            """function to launch the browser and capture all the request that are being made by the tiktok page to tget the url with signature
+            """
+            #launching the browser in headless mode
+            browser = await launch({'headless': True})
+            page = await browser.newPage()
+            #removing the timeout
+            page.setDefaultNavigationTimeout(0)
+            #adding the stealth mode to be undetected
+            await stealth(page)
+            #capture the url of every request and save the ones we want
+            page.on('request', lambda request: checkUrl(request.url))
+            await page.goto('https://www.tiktok.com/trending/?lang=en')
+            #scroll down to trigger the second request to get trending video data
+            await page.evaluate("""{window.scrollBy(0, document.body.scrollHeight);}""")
+            await page.waitFor(2000)
+            await browser.close()
+
+        asyncio.get_event_loop().run_until_complete(main())
+        return 1
+
+    def processDataRequest(requestData):
+        """function to process the data from the trending request
+        INPUT: response from trending request
+        OUTPUT: list of dictionnary with processed video data
+        """
+        listOfVideoDic = []
+        data = requestData.json()
+        if 'body' in data:
+            for video in data['body']['itemListData']:
+                #extracting the info we want to save
+                dic = {}
+                dic['id'] = video['itemInfos']['id']
+                dic['timeCreated'] = video['itemInfos']['createTime']
+                dic['likeCount'] = video['itemInfos']['diggCount']
+                dic['shareCount'] = video['itemInfos']['shareCount']
+                dic['playCount'] = video['itemInfos']['playCount']
+                dic['commentCount'] = video['itemInfos']['commentCount']
+                #dic['videoUsed'] = False
+                #dic['videoUsedDate'] = ''
+                listOfVideoDic.append(dic)
+        return listOfVideoDic
+
+    def sendRequest():
+        """function that send request to retrieve trending video data
+        INPUT: /
+        OUTPUT: DF with the video data
+        """
+        listOfVideoDic = []
+        #setting the headers where the User-Agent have to be the SAME as the one used by pupeteer
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3494.0 Safari/537.36",
+                "Accept-Encoding": "gzip, deflate, br"}
+        #store all the cookies
+        session = requests.Session()
+        #make the request type 1 for trending data
+        requestData = session.get(url = trendingUrl1, headers=headers)
+        #process data request and return in list of dictionnary
+        listOfVideoDic = processDataRequest(requestData)       
+
+        #make the request  type 2 100 times
+        for _ in range(10):
+            print('request')
+            time.sleep(1) #time between each request
+            requestData = session.get(url = trendingUrl2, headers=headers)
+            #merge result with list of dictionnary
+            listOfVideoDic.extend(processDataRequest(requestData))
+
+        #transforming list of dic into df
+        newDataDF = pd.DataFrame(listOfVideoDic)
+        newDataDF.set_index('id', inplace=True)
+        return newDataDF
+
+    def updateInsertDB(DB,newData):
+        #selecting records already used
+        DBused = DB[DB['videoUsed'] == True]
+        #selecting records not used
+        Dbnotused = DB[DB['videoUsed'] != True]
+        #update/insert new data (update ALL column)
+        DB = pd.concat([Dbnotused[~Dbnotused.index.isin(newData.index)], newData])
+        #update/insert already used data to overwrite the used status but lose the numbers update
+        DB = pd.concat([DB[~DB.index.isin(DBused.index)], DBused])
+        return DB
+
+    #Loading data DB from txt file
+    DB = pd.read_json('test.txt')
+    #Using the ID of the video as DF index
+    DB.set_index('id', inplace=True)
+    #getting the trending url in global variable
+    getTrendingUrl()
+    #getting the new data into a DF
+    newDataDF = sendRequest()
+    #merging new data in DB
+    DB = updateInsertDB(DB,newDataDF)
+    #putting back the index as a column to have it in the export
+    DB['id'] = DB.index
+    #saving DF as json into file
+    DB.to_json(r'test.txt',orient="records")
+
 def importTrendingDataToDB():
     """function to save the trending video data in the DB. If the video ID already exist, the data gets updated
     INPUT:
@@ -36,7 +183,7 @@ def importTrendingDataToDB():
         for index, item in enumerate(DB):
             if item['id'] == videoID:
                 return index
-        return False
+        return 'not found'
 
     def addInDB(data):
         """function to add a new video in the DB
@@ -93,7 +240,7 @@ def importTrendingDataToDB():
                 #check if the DB is already in the DB
                 videoIndex = checkDataInDB(video['itemInfos']['id'])
                 #add or update the data in the DB
-                if videoIndex == False:
+                if videoIndex == 'not found':
                     addInDB(video)
                 else:
                     updateDataDB(video, videoIndex)
@@ -149,7 +296,7 @@ def importTrendingDataToDB():
             await page.goto('https://www.tiktok.com/trending/?lang=en')
             #scroll down to trigger the second request to get trending video data
             await page.evaluate("""{window.scrollBy(0, document.body.scrollHeight);}""")
-            await page.waitFor(1000)
+            await page.waitFor(2000)
             await browser.close()
 
         asyncio.get_event_loop().run_until_complete(main())
@@ -171,7 +318,7 @@ def importTrendingDataToDB():
         dataToDB(requestData)
 
         #make the request  type 2 100 times
-        for _ in range(100):
+        for _ in range(200):
             time.sleep(1) #time between each request
             requestData = session.get(url = trendingUrl2, headers=headers)
             dataToDB(requestData)
@@ -517,6 +664,7 @@ discoverUrl = ''
 
 ### Import new challenge data in the DB ###
 #importChallengeDataToDB()
+#importTrendingDataToDB2()
 
 ### Import and manip dataVideo ###
 df,df_shorter = loadDbIntoDf('dataVideo.txt')
@@ -530,8 +678,9 @@ print('##################')
 print('### Processing ###')
 print('##################')
 print('')
+
 ### Select x best videos and download them ###
-df_shorter = select(df_shorter,5)
+df_shorter = select(df_shorter,20)
 vid_dl = download(df_shorter)
 
 ### merge videos ###
