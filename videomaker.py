@@ -59,6 +59,7 @@ def importTrendingDataToDB2():
             pattern = re.compile("https://m.tiktok.com/share/item/list\?secUid=&id=&type=5&count=30&minCursor=0&maxCursor=0.*")
             pattern2 = re.compile("https://m.tiktok.com/share/item/list\?secUid=&id=&type=5&count=30&minCursor=0&maxCursor=1.*")
             if pattern.match(url):
+                print(url)
                 global trendingUrl1
                 trendingUrl1 = url
                 print('found trending url 1')
@@ -108,8 +109,8 @@ def importTrendingDataToDB2():
                 dic['shareCount'] = video['itemInfos']['shareCount']
                 dic['playCount'] = video['itemInfos']['playCount']
                 dic['commentCount'] = video['itemInfos']['commentCount']
-                #dic['videoUsed'] = False
-                #dic['videoUsedDate'] = ''
+                dic['videoUsed'] = False
+                dic['videoUsedDate'] = ''
                 listOfVideoDic.append(dic)
         return listOfVideoDic
 
@@ -130,7 +131,7 @@ def importTrendingDataToDB2():
         listOfVideoDic = processDataRequest(requestData)       
 
         #make the request  type 2 100 times
-        for _ in range(200):
+        for _ in range(100):
             #print('request')
             time.sleep(1) #time between each request
             requestData = session.get(url = trendingUrl2, headers=headers)
@@ -145,37 +146,24 @@ def importTrendingDataToDB2():
     def updateInsertDB(newData):
         #Loading data DB from txt file
         #DB = pd.read_json('dataVideo.json')
-
-        def cleanBool(x):
-            if x == True:
-                return True
-            else:
-                return False
-        
-        def cleanDate(x):
-            if pd.isnull(x):
-                return ''
-            else:
-                return x
         
         with open('dataVideo.txt','r') as f:
             videos_dict = json.load(f)
         DB = pd.DataFrame.from_dict(videos_dict)
-        print(DB)
+        numOldRecord = len(DB)
         #Using the ID of the video as DF index
         DB.set_index('id', inplace=True)
-        print(DB)
-        #selecting records already used
-        DBused = DB[DB['videoUsed'] == True]
-        #selecting records not used
-        Dbnotused = DB[DB['videoUsed'] != True]
-        #update/insert new data (update ALL column)
-        DB = pd.concat([Dbnotused[~Dbnotused.index.isin(newData.index)], newData])
-        #update/insert already used data to overwrite the used status but lose the numbers update
-        DB = pd.concat([DB[~DB.index.isin(DBused.index)], DBused])
-        DB['videoUsed'] = DB['videoUsed'].apply(cleanBool)
-        DB['videoUsedDate'] = DB['videoUsedDate'].apply(cleanDate)
 
+        #adding all the data that are not in DB = insert
+        DB = pd.concat([DB, newData[~newData.index.isin(DB.index)]])
+        #removing the columns that don't have to be updated
+        newData.drop(['videoUsed', 'videoUsedDate'], axis=1, inplace=True)
+        #updating the data = updating only the numbers
+        DB.update(newData)
+
+        numNewRecord = len(DB)
+        numRecordAdded = numNewRecord - numOldRecord
+        print("Number of records added in DB:", numRecordAdded)
         return DB
 
     #getting the trending url in global variable
