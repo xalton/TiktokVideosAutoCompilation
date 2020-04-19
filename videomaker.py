@@ -147,16 +147,16 @@ def importTrendingDataToDB2():
         #DB = pd.read_json('dataVideo.json')
 
         def cleanBool(x):
-            if x == true:
+            if x == True:
                 return True
             else:
                 return False
         
         def cleanDate(x):
-            if len(x) > 1:
-                return x
-            else:
+            if pd.isnull(x):
                 return ''
+            else:
+                return x
         
         with open('dataVideo.txt','r') as f:
             videos_dict = json.load(f)
@@ -187,7 +187,7 @@ def importTrendingDataToDB2():
     #putting back the index as a column to have it in the export
     DB['id'] = DB.index
     #saving DF as json into file
-    DB.to_json(r'test.txt',orient="records")
+    DB.to_json(r'dataVideo.txt',orient="records")
 
 def importTrendingDataToDB():
     """function to save the trending video data in the DB. If the video ID already exist, the data gets updated
