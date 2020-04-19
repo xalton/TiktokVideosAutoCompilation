@@ -131,7 +131,7 @@ def importTrendingDataToDB2():
 
         #make the request  type 2 100 times
         for _ in range(10):
-            print('request')
+            #print('request')
             time.sleep(1) #time between each request
             requestData = session.get(url = trendingUrl2, headers=headers)
             #merge result with list of dictionnary
@@ -357,7 +357,7 @@ def importChallengeDataToDB():
             INPUT: url from all the requests being made by the tiktok trending page
             OUTPUT: discover url in global variable
             """
-            print(url)
+            #print(url)
             pattern = re.compile("https://m.tiktok.com/node/share/discover?.*")
             if pattern.match(url):
                 global discoverUrl
@@ -645,6 +645,36 @@ def update(df,df_shorter):
     print(df)
     df.to_json(r'dataVideo.txt',orient="records")
 
+def importData():
+    ### Import new challenge data in the DB ###
+    #importChallengeDataToDB()
+    importTrendingDataToDB()
+    #importTrendingDataToDB2()
+
+def makeVideo():
+    ### Import and manip dataVideo ###
+    df,df_shorter = loadDbIntoDf('dataVideo.txt')
+    print('Initialization is done...')
+    print('')
+    ##################
+    ### Processing ###
+    ##################
+
+    print('##################')
+    print('### Processing ###')
+    print('##################')
+    print('')
+
+    ### Select x best videos and download them ###
+    df_shorter = select(df_shorter,20)
+    vid_dl = download(df_shorter)
+
+    ### merge videos ###
+    #merge(vid_dl)
+
+    ### Check ID of selected videos and updtate videoUsed status ###
+    #update(df,df_shorter)
+
 ######################
 ### Initialization ###
 ######################
@@ -659,35 +689,9 @@ trendingUrl1 = ''
 trendingUrl2 = ''
 discoverUrl = ''
 
-### Import new trending data in the DB ###
-#importTrendingDataToDB()
+importData()
+#makeVideo()
 
-### Import new challenge data in the DB ###
-#importChallengeDataToDB()
-#importTrendingDataToDB2()
-
-### Import and manip dataVideo ###
-df,df_shorter = loadDbIntoDf('dataVideo.txt')
-print('Initialization is done...')
-print('')
-##################
-### Processing ###
-##################
-
-print('##################')
-print('### Processing ###')
-print('##################')
-print('')
-
-### Select x best videos and download them ###
-df_shorter = select(df_shorter,20)
-vid_dl = download(df_shorter)
-
-### merge videos ###
-merge(vid_dl)
-
-### Check ID of selected videos and updtate videoUsed status ###
-update(df,df_shorter)
 print('Processing is done... ')
 print("--- %s seconds ---" % (time.time() - start_time))
 print('')
