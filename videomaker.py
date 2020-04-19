@@ -130,7 +130,7 @@ def importTrendingDataToDB2():
         listOfVideoDic = processDataRequest(requestData)       
 
         #make the request  type 2 100 times
-        for _ in range(10):
+        for _ in range(200):
             #print('request')
             time.sleep(1) #time between each request
             requestData = session.get(url = trendingUrl2, headers=headers)
@@ -142,7 +142,29 @@ def importTrendingDataToDB2():
         newDataDF.set_index('id', inplace=True)
         return newDataDF
 
-    def updateInsertDB(DB,newData):
+    def updateInsertDB(newData):
+        #Loading data DB from txt file
+        #DB = pd.read_json('dataVideo.json')
+
+        def cleanBool(x):
+            if x == true:
+                return True
+            else:
+                return False
+        
+        def cleanDate(x):
+            if len(x) > 1:
+                return x
+            else:
+                return ''
+        
+        with open('dataVideo.txt','r') as f:
+            videos_dict = json.load(f)
+        DB = pd.DataFrame.from_dict(videos_dict)
+        print(DB)
+        #Using the ID of the video as DF index
+        DB.set_index('id', inplace=True)
+        print(DB)
         #selecting records already used
         DBused = DB[DB['videoUsed'] == True]
         #selecting records not used
@@ -151,18 +173,17 @@ def importTrendingDataToDB2():
         DB = pd.concat([Dbnotused[~Dbnotused.index.isin(newData.index)], newData])
         #update/insert already used data to overwrite the used status but lose the numbers update
         DB = pd.concat([DB[~DB.index.isin(DBused.index)], DBused])
+        DB['videoUsed'] = DB['videoUsed'].apply(cleanBool)
+        DB['videoUsedDate'] = DB['videoUsedDate'].apply(cleanDate)
+
         return DB
 
-    #Loading data DB from txt file
-    DB = pd.read_json('test.txt')
-    #Using the ID of the video as DF index
-    DB.set_index('id', inplace=True)
     #getting the trending url in global variable
     getTrendingUrl()
     #getting the new data into a DF
     newDataDF = sendRequest()
     #merging new data in DB
-    DB = updateInsertDB(DB,newDataDF)
+    DB = updateInsertDB(newDataDF)
     #putting back the index as a column to have it in the export
     DB['id'] = DB.index
     #saving DF as json into file
@@ -648,8 +669,8 @@ def update(df,df_shorter):
 def importData():
     ### Import new challenge data in the DB ###
     #importChallengeDataToDB()
-    importTrendingDataToDB()
-    #importTrendingDataToDB2()
+    #importTrendingDataToDB()
+    importTrendingDataToDB2()
 
 def makeVideo():
     ### Import and manip dataVideo ###
