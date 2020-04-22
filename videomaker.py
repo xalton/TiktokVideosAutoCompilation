@@ -128,6 +128,7 @@ def importTrendingDataToDB():
         INPUT: /
         OUTPUT: DF with the video data
         """
+        print("Getting trending video data")
         listOfVideoDic = []
         #setting the headers where the User-Agent have to be the SAME as the one used by pupeteer
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3494.0 Safari/537.36",
@@ -155,6 +156,7 @@ def importTrendingDataToDB():
         return newDataDF
 
     def updateInsertDB(newData):
+        print("merging data into DB")
         #Loading data DB from txt file
         with open('dataVideo.txt','r') as f:
             videos_dict = json.load(f)
@@ -304,44 +306,6 @@ def importChallengeDataToDB():
         except:
             return urlList
 
-    def addInDB(dataVideo, data, challenge):
-        """function to add a new video in the DB
-        INPUT: DB, data of the video to add
-        OUTPUT: new video is saved in the txt file
-        """
-        #extracting the info we want to save
-        dic = {}
-        dic['id'] = data['itemInfos']['id']
-        dic['timeCreated'] = data['itemInfos']['createTime']
-        dic['likeCount'] = data['itemInfos']['diggCount']
-        dic['shareCount'] = data['itemInfos']['shareCount']
-        dic['playCount'] = data['itemInfos']['playCount']
-        dic['commentCount'] = data['itemInfos']['commentCount']
-        dic['videoUsed'] = False
-        dic['videoUsedDate'] = ''
-        if challenge not in dataVideo:
-            dataVideo[challenge] = []
-        dataVideo[challenge].append(dic)
-        print('added data in db')
-        #writing the output json in a txt file
-        with open('dataVideoChallenge.txt', 'w') as outfile:
-            json.dump(dataVideo, outfile)
-
-    def updateDataDB(dataVideo, data, videoIndex, challenge):
-        """function to update the data of video that already exist in the DB
-        INPUT: DB, data for video to update, index of the video to update in DB list
-        OUTPUT: video data updated in the txt file
-        """
-        #updating data with latest data
-        dataVideo[challenge][videoIndex]['likeCount'] = data['itemInfos']['diggCount']
-        dataVideo[challenge][videoIndex]['shareCount'] = data['itemInfos']['shareCount']
-        dataVideo[challenge][videoIndex]['playCount'] = data['itemInfos']['playCount']
-        dataVideo[challenge][videoIndex]['commentCount'] = data['itemInfos']['commentCount']
-        print('updated data in db')
-        #writing the output json in txt file
-        with open('dataVideoChallenge.txt', 'w') as outfile:
-            json.dump(dataVideo, outfile)
-
     def processDataRequest(requestData):
             """function to process the data from the trending request
             INPUT: response from trending request
@@ -365,44 +329,6 @@ def importChallengeDataToDB():
                     print(dic)
                     listOfVideoDic.append(dic)
             return listOfVideoDic
-
-    def checkDataInDB(videoID, dataVideo, challenge):
-        """function to check if the video already exist in the DB
-        INPUT: id of the video we check, DB with all the video already saved
-        OUTPUT: if the id is found, return the position in the list. If the id is not found return False
-        """
-        #looping through each element in the list to check if the video id already exist
-        if challenge in dataVideo:
-            for index, item in enumerate(dataVideo[challenge]):
-                if item['id'] == videoID:
-                    return index
-            return False
-        else:
-            return False
-
-    def dataToDB(requestData,challenge):
-        """function to process the data from the challenge data request
-        INPUT: response from challenge data request
-        OUTPUT: dispatch to function to write in DB
-        """
-        #load data from txt file
-        with open('dataVideoChallenge.txt') as f:
-            dataVideo = json.load(f)
-        # extracting data in json format
-        data = requestData.json()
-
-        if 'body' in data:
-            #looping through each video in the response json
-            for video in data['body']['itemListData']:
-                #check if the DB is already in the DB
-                videoIndex = checkDataInDB(video['itemInfos']['id'], dataVideo, challenge)
-                #add or update the data in the DB
-                if videoIndex == False:
-                    addInDB(dataVideo, video, challenge)
-                else:
-                    updateDataDB(dataVideo, video, videoIndex, challenge)
-        else:
-            print("no body")
 
     def updateInsertDB(newData):
         #Loading data DB from txt file
@@ -604,8 +530,6 @@ start_time = time.time()
 print('######################')
 print('### Initialization ###')
 print('######################')
-print('')
-print('...')
 
 ### Global variable for the trending urls (should be avoided) ###
 trendingUrl1 = ''
@@ -613,8 +537,8 @@ trendingUrl2 = ''
 discoverUrl = ''
 
 for _ in range(10):
-    time.sleep(60) #time between each request
     importData()
+    time.sleep(60) #time between each request
 #makeVideo()
 
     print('Processing is done... ')
