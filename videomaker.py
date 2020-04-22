@@ -252,15 +252,45 @@ def importChallengeDataToDB():
         r = session.get(url = discoverUrl, headers=headers)
         data = r.json()
         listOfLinks = []
+        listOfChallengeData = []
         if 'body' in data:
             for video in data['body'][2]['exploreList']:
                 if video['cardItem']['type'] == 1: #check that it is a music challenge type
                     listOfLinks.append('https://www.tiktok.com'+video['cardItem']['link'])
+                    dic = {}
+                    dic['link'] = 'https://www.tiktok.com'+video['cardItem']['link']
+                    dic['musicId'] = video['cardItem']['extraInfo']['musicId']
+                    dic['numberOfVideos'] = video['cardItem']['extraInfo']['posts']
+                    dic['challengeUsed'] = False
+                    dic['challengeUsedDate'] = ''
+                    listOfChallengeData.append(dic)
                 else:
                     print("wrong type in discover")
         else:
             print("no body in discover data")
+        saveListOfChallenge(listOfChallengeData)
         return listOfLinks
+
+    def saveListOfChallenge(listOfChallengeData):
+        
+        DFChallengeData = pd.DataFrame.from_dict(listOfChallengeData)
+        DFChallengeData.set_index('musicId', inplace=True)
+
+        with open('listChallenge.txt','r') as f:
+            videos_dict = json.load(f)
+        challengeDB = pd.DataFrame.from_dict(videos_dict)
+        #Using the ID of the video as DF index
+        challengeDB.set_index('musicId', inplace=True)
+        #adding all the data that are not in DB = insert
+        challengeDB = pd.concat([challengeDB, DFChallengeData[~DFChallengeData.index.isin(challengeDB.index)]])
+        #removing the columns that don't have to be updated
+        DFChallengeData.drop(['challengeUsed', 'challengeUsedDate'], axis=1, inplace=True)
+        #updating the data = updating only the numbers
+        challengeDB.update(DFChallengeData)
+        #putting back the index as a column to have it in the export
+        challengeDB['musicId'] = challengeDB.index
+        #saving DF as json into file
+        challengeDB.to_json(r'listChallenge.txt',orient="records")
 
     def getChallengeUrl(urlChallenge):
         """function to retrieve the data urls for each challenge using pyppeteer
@@ -293,7 +323,7 @@ def importChallengeDataToDB():
             await page.goto(urlChallenge)
             await page.waitFor(1000)
             #scroll down to trigger the second request to get trending video data
-            for _ in range(20):
+            for _ in range(10):
                 await page.evaluate("""{window.scrollBy(0, document.body.scrollHeight);}""")
                 await page.waitFor(1000)
             await page.waitFor(1000)
@@ -326,7 +356,6 @@ def importChallengeDataToDB():
                     dic['commentCount'] = video['itemInfos']['commentCount']
                     dic['videoUsed'] = False
                     dic['videoUsedDate'] = ''
-                    print(dic)
                     listOfVideoDic.append(dic)
             return listOfVideoDic
 
@@ -340,7 +369,6 @@ def importChallengeDataToDB():
         numOldRecord = len(DB)
         #Using the ID of the video as DF index
         DB.set_index('id', inplace=True)
-
         #adding all the data that are not in DB = insert
         DB = pd.concat([DB, newData[~newData.index.isin(DB.index)]])
         #removing the columns that don't have to be updated
@@ -496,8 +524,8 @@ def update(df,df_shorter):
 
 def importData():
     ### Import new challenge data in the DB ###
-    #importChallengeDataToDB()
-    importTrendingDataToDB()
+    importChallengeDataToDB()
+    #importTrendingDataToDB()
 
 def makeVideo():
     ### Import and manip dataVideo ###
@@ -536,17 +564,18 @@ trendingUrl1 = ''
 trendingUrl2 = ''
 discoverUrl = ''
 
-for _ in range(10):
-    importData()
-    time.sleep(60) #time between each request
-#makeVideo()
+# for _ in range(10):
+#     importData()
+#     time.sleep(60) #time between each request
+# #makeVideo()
+importData()
 
-    print('Processing is done... ')
-    print("--- %s seconds ---" % (time.time() - start_time))
-    print('')
-    print('############')
-    print('### DONE ###')
-    print('############')
+print('Processing is done... ')
+print("--- %s seconds ---" % (time.time() - start_time))
+print('')
+print('############')
+print('### DONE ###')
+print('############')
 
 ############
 ### Publish on YT ###
