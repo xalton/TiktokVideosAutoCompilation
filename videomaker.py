@@ -62,7 +62,7 @@ def importTrendingDataToDB():
             pattern = re.compile("https://m.tiktok.com/api/item_list/\?count=30&id=1&type=5&secUid=&maxCursor=0&minCursor=0.*")
             pattern2 = re.compile("https://m.tiktok.com/api/item_list/\?count=30&id=1&type=5&secUid=&maxCursor=1&minCursor=0.*")
             if pattern.match(url):
-                print(url)
+                #print(url)
                 global trendingUrl1
                 trendingUrl1 = url
                 #print('found trending url 1')
@@ -204,7 +204,7 @@ def importChallengeDataToDB():
         IN: /
         OUT: discover url is saved in global variable
         """
-
+        print("getting the discover url...")
         def checkUrlDiscover(url):
             """function that receive all the request urls and filter on the discover url with the signature
             INPUT: url from all the requests being made by the tiktok trending page
@@ -215,7 +215,6 @@ def importChallengeDataToDB():
             if pattern.match(url):
                 global discoverUrl
                 discoverUrl = url
-                print('found discover url')
             else:
                 pass
 
@@ -232,10 +231,15 @@ def importChallengeDataToDB():
             #capture the url of every request and save the ones we want
             page.on('request', lambda request: checkUrlDiscover(request.url))
             await page.goto('https://www.tiktok.com/trending/?lang=en')
-            await page.waitFor(2000)
+            await page.waitFor(3000)
             await browser.close()
 
-        asyncio.get_event_loop().run_until_complete(main())
+        try:
+            asyncio.get_event_loop().run_until_complete(main())
+        except:
+            print("error to go on the trending page. Retrying...")
+            time.sleep(10)
+            asyncio.get_event_loop().run_until_complete(main())
         return 1
 
     def getChallengesList():
@@ -243,24 +247,31 @@ def importChallengeDataToDB():
         INPUT:
         OUTPUT: list of all th current challenges link
         """
+        print("Getting the list of challenge...")
         #setting the headers where the User-Agent have to be the same as the one used by pupeteer
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3494.0 Safari/537.36",
                 "Accept-Encoding": "gzip, deflate, br"}
         #store all the cookies
         session = requests.Session()
-        #make the request to get the list of challenge
-        r = session.get(url = discoverUrl, headers=headers)
+        try:
+            #make the request to get the list of challenge
+            r = session.get(url = discoverUrl, headers=headers)
+        except:
+            print("error to get list of challenge. Retrying...")
+            time.sleep(60)
+            getChallengesList()
+
         data = r.json()
         listOfLinks = []
         listOfChallengeData = []
         if 'body' in data:
-            for video in data['body'][2]['exploreList']:
-                if video['cardItem']['type'] == 1: #check that it is a music challenge type
-                    listOfLinks.append('https://www.tiktok.com'+video['cardItem']['link'])
+            for challenge in data['body'][2]['exploreList']:
+                if challenge['cardItem']['type'] == 1: #check that it is a music challenge type
+                    listOfLinks.append('https://www.tiktok.com'+challenge['cardItem']['link'])
                     dic = {}
-                    dic['link'] = 'https://www.tiktok.com'+video['cardItem']['link']
-                    dic['musicId'] = video['cardItem']['extraInfo']['musicId']
-                    dic['numberOfVideos'] = video['cardItem']['extraInfo']['posts']
+                    dic['link'] = 'https://www.tiktok.com'+challenge['cardItem']['link']
+                    dic['musicId'] = challenge['cardItem']['extraInfo']['musicId']
+                    dic['numberOfVideos'] = challenge['cardItem']['extraInfo']['posts']
                     dic['challengeUsed'] = False
                     dic['challengeUsedDate'] = ''
                     listOfChallengeData.append(dic)
@@ -272,14 +283,15 @@ def importChallengeDataToDB():
         return listOfLinks
 
     def saveListOfChallenge(listOfChallengeData):
-        
+        print("Saving the list of challenge...")
+        #putting list of challenge into a DF
         DFChallengeData = pd.DataFrame.from_dict(listOfChallengeData)
         DFChallengeData.set_index('musicId', inplace=True)
-
+        #loading list of challenge from txt
         with open('listChallenge.txt','r') as f:
             videos_dict = json.load(f)
         challengeDB = pd.DataFrame.from_dict(videos_dict)
-        #Using the ID of the video as DF index
+        #Using the music ID as DF index
         challengeDB.set_index('musicId', inplace=True)
         #adding all the data that are not in DB = insert
         challengeDB = pd.concat([challengeDB, DFChallengeData[~DFChallengeData.index.isin(challengeDB.index)]])
@@ -297,12 +309,12 @@ def importChallengeDataToDB():
         INPUT: challenge urls
         OUTPUT: challenge datas urls
         """
+        print("Getting the challenge data url...")
         urlList = []
 
         def checkUrlChallenge(url):
             pattern = re.compile("https://m.tiktok.com/share/item/list\?secUid.*")
             if pattern.match(url):
-                print('found challenge data url')
                 urlList.append(url)
             else:
                 pass
@@ -315,25 +327,25 @@ def importChallengeDataToDB():
             browser = await launch({'headless': True})
             page = await browser.newPage()
             #removing the timeout
-            page.setDefaultNavigationTimeout(40000)
+            page.setDefaultNavigationTimeout(20000)
             #adding the stealth mode to be undetected
             await stealth(page)
             #capture the url of every request and save the ones we want
             page.on('request', lambda request: checkUrlChallenge(request.url))
             await page.goto(urlChallenge)
             await page.waitFor(1000)
-            #scroll down to trigger the second request to get trending video data
-            for _ in range(10):
+            #scroll down to trigger the requests to get video data
+            for _ in range(1):
                 await page.evaluate("""{window.scrollBy(0, document.body.scrollHeight);}""")
                 await page.waitFor(1000)
-            await page.waitFor(1000)
-            print('closing th ebrowser')
+            await page.waitFor(3000)
             await browser.close()
 
         try:
             asyncio.get_event_loop().run_until_complete(main())
             return urlList
         except:
+            print("Error to get the challenge url data")
             return urlList
 
     def processDataRequest(requestData):
@@ -359,10 +371,40 @@ def importChallengeDataToDB():
                     listOfVideoDic.append(dic)
             return listOfVideoDic
 
+    def getChallengeVideoData(challengeUrlDic):
+        """function to make the request to retrieve video data for all the challenge and call the function to process it
+        INPUT: dic containing all the challenge data url where the challenges are the key
+        OUTPUT: sending the response to function to process data
+        """
+        print("Getting the challenge video data...")
+        listOfVideoDic = []
+        #looping through each challenge and data url
+        for challenge in challengeUrlDic:
+            for url in challengeUrlDic[challenge]:
+                time.sleep(1)
+                #setting the headers where the User-Agent have to be the same as the one used by pupeteer
+                headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3494.0 Safari/537.36",
+               "Accept-Encoding": "gzip, deflate, br"}
+                #store all the cookies
+                session = requests.Session()
+                try:
+                    #make the request type 1 for trending data
+                    requestData = session.get(url = url, headers=headers)
+                    listOfVideoDic.extend(processDataRequest(requestData))
+                except:
+                    print("Error to get data for challenge")
+
+        #transforming list of dic into df
+        newDataDF = pd.DataFrame(listOfVideoDic)
+        #dropping the duplicates (appeared in API update why ?)
+        newDataDF.drop_duplicates(subset='id',inplace=True,keep='last') 
+        #setting the index with the id
+        newDataDF.set_index('id', inplace=True)
+        return newDataDF
+
     def updateInsertDB(newData):
-        #Loading data DB from txt file
-        #DB = pd.read_json('dataVideo.json')
         
+        #loading video challenge data into DF
         with open('dataVideoChallenge.txt','r') as f:
             videos_dict = json.load(f)
         DB = pd.DataFrame.from_dict(videos_dict)
@@ -382,38 +424,11 @@ def importChallengeDataToDB():
         print("Total number of records:", numNewRecord)
         return DB
 
-    def getChallengeVideoData(challengeUrlDic):
-        """function to make the request to retrieve video data for all the challenge and call the function to process it
-        INPUT: dic containing all the challenge data url where the challenges are the key
-        OUTPUT: sending the response to function to process data
-        """
-        listOfVideoDic = []
-        for challenge in challengeUrlDic:
-            for url in challengeUrlDic[challenge]:
-                time.sleep(1)
-                #setting the headers where the User-Agent have to be the same as the one used by pupeteer
-                headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3494.0 Safari/537.36",
-               "Accept-Encoding": "gzip, deflate, br"}
-                #store all the cookies
-                session = requests.Session()
-                #make the request type 1 for trending data
-                requestData = session.get(url = url, headers=headers)
-
-                listOfVideoDic.extend(processDataRequest(requestData))
-        print(listOfVideoDic)
-        #transforming list of dic into df
-        newDataDF = pd.DataFrame(listOfVideoDic)
-        newDataDF.set_index('id', inplace=True)
-        return newDataDF
-                #process data and write it to DB
-                #dataToDB(requestData,challenge)
-
     challengeUrlDic = {}
     #save discover url in global variable
     getDiscoverUrl()
     #get the list of music challenges url
     challengeList = getChallengesList()
-    #print(challengeList)
     #looping through each challenge and getting the data url for each challenge
     for challenge in challengeList:
          challengeUrlDic[challenge] = getChallengeUrl(challenge)
@@ -460,7 +475,7 @@ def select(df_shorter,nbvideos):
     df_shorter['score'] = score
     df_shorter = df_shorter.sort_values('score',ascending=False)
     df_shorter = df_shorter.head(nbvideos)
-    print(df_shorter)
+    #print(df_shorter)
     return df_shorter
 
 def generateLinkFromId(videoId):
@@ -519,7 +534,7 @@ def update(df,df_shorter):
     for id in df_shorter['id']:
         df.loc[df['id'] == id,'videoUsed'] = True
         df.loc[df['id'] == id,'videoUsedDate'] = d
-    print(df)
+    #print(df)
     df.to_json(r'dataVideo.txt',orient="records")
 
 def importData():
@@ -546,10 +561,10 @@ def makeVideo():
     vid_dl = download(df_shorter)
 
     ### merge videos ###
-    #merge(vid_dl)
+    merge(vid_dl)
 
     ### Check ID of selected videos and updtate videoUsed status ###
-    #update(df,df_shorter)
+    update(df,df_shorter)
 
 ######################
 ### Initialization ###
@@ -564,15 +579,15 @@ trendingUrl1 = ''
 trendingUrl2 = ''
 discoverUrl = ''
 
-# for _ in range(10):
-#     importData()
-#     time.sleep(60) #time between each request
-# #makeVideo()
-importData()
+for _ in range(100):
+    importData()
+    time.sleep(1) #time between each request
+    #makeVideo()
 
-print('Processing is done... ')
-print("--- %s seconds ---" % (time.time() - start_time))
-print('')
+    print('Processing is done... ')
+    print("--- %s seconds ---" % (time.time() - start_time))
+    print('')
+#makeVideo()
 print('############')
 print('### DONE ###')
 print('############')
