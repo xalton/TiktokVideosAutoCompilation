@@ -637,5 +637,5 @@ userAgent = '' #will contain the user agent of chromium
 
 # https://www.tiktok.com/node/share/video/@mrbeast/6804065248375508230
 #filterTrendingVideo()
-updateDB()
+#updateDB()
 # print("--- %s seconds ---" % (time.time() - start_time))
