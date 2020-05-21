@@ -1,4 +1,3 @@
-
 #!/usr/bin/python3
 
 ###############
@@ -17,28 +16,76 @@ from lxml import html
 from datetime import date
 from moviepy.editor import *
 
-#################
-### Functions ###
-#################
+def updateDB():
+    """
+    function to update the data about all the video in the DB
+    1 request per video so the DB has to stay small
+    """
+    #Loading data DB from txt file
+    with open('dataVideo.txt','r') as f:
+        videos_dict = json.load(f)
+    #loading the dic into a DF
+    DB = pd.DataFrame.from_dict(videos_dict)
+    #extract the list of ID:
+    id_list = DB['id'].tolist()
+    #Using the ID of the video as DF index
+    DB.set_index('id', inplace=True)
+    videoData = []
+    for videoId in id_list:
+        print(videoId)
+        dic = {}
+        page = requests.get('https://www.tiktok.com/embed/v2/'+videoId+'?lang=en')
+        tree = html.fromstring(page.content)
+        buyers = tree.xpath('//*[@id="__NEXT_DATA__"]/text()')
+        jsonData = json.loads(buyers[0])
+        if 'videoData' in jsonData['props']['pageProps']:
+            dic['id'] = videoId
+            dic['commentCount'] = jsonData['props']['pageProps']['videoData']['itemInfos']['commentCount']
+            dic['likeCount'] = jsonData['props']['pageProps']['videoData']['itemInfos']['diggCount']
+            dic['playCount'] = jsonData['props']['pageProps']['videoData']['itemInfos']['playCount']
+            dic['shareCount'] = jsonData['props']['pageProps']['videoData']['itemInfos']['shareCount']
+            print(dic)
+            videoData.append(dic)
+        else:
+            print("video doesn't exist anymore and was deleted from the DB")
+            DB.drop(videoId, inplace=True)
+    
+    newDataDF = pd.DataFrame(videoData)
+    #setting the index with the id
+    newDataDF.set_index('id', inplace=True)
+    DB.update(newDataDF)
+    #putting back the index as a column to have it in the export
+    DB['id'] = DB.index
+    #saving DF as json into file
+    DB.to_json(r'dataVideo.txt',orient="records")
 
-def checkDuplicates():
-    #load data from txt file
-    with open('dataVideo.txt') as f:
-        dataVideo = json.load(f)
-
-    #load data from txt file
-    with open('dataVideo.txt') as f:
-        dataVideo2 = json.load(f)
-
-    for index in dataVideo:
-        for index2 in dataVideo2:
-            if index["id"] == index2["id"]:
-                print("duplicate found", index2["id"])
+def filterTrendingVideo():
+    with open('dataVideo.txt','r') as f:
+            videos_dict = json.load(f)
+    #loading the dic into a DF
+    DB = pd.DataFrame.from_dict(videos_dict)
+    #Using the ID of the video as DF index
+    DB.set_index('id', inplace=True)
+    #number of records before adding new data
+    numOldRecord = len(DB)
+    print(numOldRecord)
+    filtered_df = DB[(DB['likeCount'] > 300000) | (DB['shareCount'] > 5000) | (DB['playCount'] > 2000000) & (DB['commentCount'] > 3000)]
+    numNewRecord = len(filtered_df)
+    print(numNewRecord)
+    #putting back the index as a column to have it in the export
+    filtered_df['id'] = filtered_df.index
+    #saving DF as json into file
+    filtered_df.to_json(r'dataVideo.txt',orient="records")
 
 def importTrendingDataToDB():
     """
     Update the DB with new trending video
     """
+    #importing everything for the python version of Pupetteer
+    import asyncio
+    from pyppeteer import launch
+    from pyppeteer_stealth import stealth
+    import re
 
     def getTrendingUrl():
         """
@@ -46,14 +93,9 @@ def importTrendingDataToDB():
         INPUT: /
         OUTPUT: the urls are saved in the 2 global variable trendingUrl1 and trendingUrl2 and can be used to retrieve the trending data
         """
-        print("getting trending url")
-        #importing everything for the python version of Pupetteer
-        import asyncio
-        from pyppeteer import launch
-        from pyppeteer_stealth import stealth
-        import re
+        print("Getting trending url...")
 
-        def checkUrl(url):
+        def checkUrl(url,browser):
             """function that receive all the request urls and filter on the url to retrieve the trending video data with the signature
             INPUT: url from all the requests being made by the tiktok trending page
             OUTPUT: the 2 url that are used to retrieve trending video data are saved in 2 global variables
@@ -65,11 +107,11 @@ def importTrendingDataToDB():
                 #print(url)
                 global trendingUrl1
                 trendingUrl1 = url
-                #print('found trending url 1')
+                print('found trending url 1')
             elif pattern2.match(url):
                 global trendingUrl2
                 trendingUrl2 = url
-                #print('found trending url 2')
+                print('found trending url 2')
             else:
                 pass
                 #print('not found')
@@ -81,11 +123,13 @@ def importTrendingDataToDB():
             browser = await launch({'headless': True})
             page = await browser.newPage()
             #removing the timeout
-            page.setDefaultNavigationTimeout(0)
+            page.setDefaultNavigationTimeout(40000)
             #adding the stealth mode to be undetected
             await stealth(page)
+            global userAgent
+            userAgent = await page.evaluate('navigator.userAgent')
             #capture the url of every request and save the ones we want
-            page.on('request', lambda request: checkUrl(request.url))
+            page.on('request', lambda request: checkUrl(request.url,browser))
             await page.goto('https://www.tiktok.com/trending/?lang=en')
             await page.waitFor(2000)
             #scroll down to trigger the second request to get trending video data
@@ -120,7 +164,10 @@ def importTrendingDataToDB():
                 dic['commentCount'] = video['stats']['commentCount']
                 dic['videoUsed'] = False
                 dic['videoUsedDate'] = ''
-                listOfVideoDic.append(dic)
+                if (dic['likeCount'] > 300000) or (dic['shareCount'] > 5000) or (dic['playCount'] > 2000000) or (dic['commentCount'] > 3000):
+                    listOfVideoDic.append(dic)
+        else:
+            print("Error processing the trending data")
         return listOfVideoDic
 
     def getTrendingVideoData():
@@ -131,20 +178,28 @@ def importTrendingDataToDB():
         print("Getting trending video data")
         listOfVideoDic = []
         #setting the headers where the User-Agent have to be the SAME as the one used by pupeteer
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3494.0 Safari/537.36",
-                "Accept-Encoding": "gzip, deflate, br"}
+        headers = {"User-Agent": userAgent
+                #"Accept-Encoding": "gzip, deflate, br"
+                }
         #store all the cookies
         session = requests.Session()
         #make the request type 1 for trending data
-        requestData = session.get(url = trendingUrl1, headers=headers)
+        try:
+            requestData = session.get(url = trendingUrl1, headers=headers)
+        except:
+            print("Error with the first request to get trending data")
+
         #process data request and return in list of dictionnary
         listOfVideoDic = processDataRequest(requestData)       
 
         #make the request  type 2 x times
-        for _ in range(100):
+        for _ in range(120):
             #print('request')
             time.sleep(1) #time between each request
-            requestData = session.get(url = trendingUrl2, headers=headers)
+            try:
+                requestData = session.get(url = trendingUrl2, headers=headers)
+            except:
+                print("Error to get the trending data")
             #merge result with list of dictionnary
             listOfVideoDic.extend(processDataRequest(requestData))
         #transforming list of dic into df
@@ -199,24 +254,70 @@ def importChallengeDataToDB():
     from pyppeteer_stealth import stealth
     import re
 
-    def getDiscoverUrl():
+    def getChallengesList():
         """function to get the signed discover url that will allow to get the list of challenges
         IN: /
         OUT: discover url is saved in global variable
         """
         print("getting the discover url...")
-        def checkUrlDiscover(url):
-            """function that receive all the request urls and filter on the discover url with the signature
-            INPUT: url from all the requests being made by the tiktok trending page
-            OUTPUT: discover url in global variable
-            """
-            #print(url)
+
+        listOfChallenges = []
+
+        def saveListOfChallenge(listOfChallengeData):
+            print("Saving the list of challenge...")
+            #putting list of challenge into a DF
+            DFChallengeData = pd.DataFrame.from_dict(listOfChallengeData)
+            DFChallengeData.set_index('musicId', inplace=True)
+            #loading list of challenge from txt
+            with open('listChallenge.txt','r') as f:
+                videos_dict = json.load(f)
+            challengeDB = pd.DataFrame.from_dict(videos_dict)
+            #Using the music ID as DF index
+            challengeDB.set_index('musicId', inplace=True)
+            #adding all the data that are not in DB = insert
+            challengeDB = pd.concat([challengeDB, DFChallengeData[~DFChallengeData.index.isin(challengeDB.index)]])
+            #removing the columns that don't have to be updated
+            DFChallengeData.drop(['challengeUsed', 'challengeUsedDate'], axis=1, inplace=True)
+            #updating the data = updating only the numbers
+            challengeDB.update(DFChallengeData)
+            #putting back the index as a column to have it in the export
+            challengeDB['musicId'] = challengeDB.index
+            #saving DF as json into file
+            challengeDB.to_json(r'listChallenge.txt',orient="records")
+
+        def processDataRequestDiscover(data):
+            listOfChallengeData = []
+            if 'body' in data:
+                for challenge in data['body'][2]['exploreList']:
+                    if challenge['cardItem']['type'] == 1: #check that it is a music challenge type
+                        listOfChallenges.append('https://www.tiktok.com'+challenge['cardItem']['link'])
+                        dic = {}
+                        dic['link'] = 'https://www.tiktok.com'+challenge['cardItem']['link']
+                        dic['musicId'] = challenge['cardItem']['extraInfo']['musicId']
+                        dic['numberOfVideos'] = challenge['cardItem']['extraInfo']['posts']
+                        dic['challengeUsed'] = False
+                        dic['challengeUsedDate'] = ''
+                        listOfChallengeData.append(dic)
+                    else:
+                        print("wrong type in discover")
+            else:
+                print("no body in discover data")
+            saveListOfChallenge(listOfChallengeData)
+            return listOfChallenges
+
+        async def interceptResponse(response):
+            url = response.url
+            if not response.ok:
+                print('request %s failed' % url)
+                return
             pattern = re.compile("https://m.tiktok.com/node/share/discover?.*")
             if pattern.match(url):
-                global discoverUrl
-                discoverUrl = url
-            else:
-                pass
+                try:
+                    json_data = await response.json()
+                    processDataRequestDiscover(json_data)
+                except Exception as e:
+                    print(e)
+                    print("error to parse json")
 
         async def main():
             """function to launch the browser and capture all the request that are being made by the tiktok page to get the url with signature
@@ -228,97 +329,70 @@ def importChallengeDataToDB():
             page.setDefaultNavigationTimeout(0)
             #adding the stealth mode to be undetected
             await stealth(page)
-            #capture the url of every request and save the ones we want
-            page.on('request', lambda request: checkUrlDiscover(request.url))
+            global userAgent
+            userAgent = await page.evaluate('navigator.userAgent')
+            #capture the request response of every request and save the ones we want
+            page.on('response', lambda response: asyncio.ensure_future(interceptResponse(response)))
             await page.goto('https://www.tiktok.com/trending/?lang=en')
             await page.waitFor(3000)
             await browser.close()
 
         try:
             asyncio.get_event_loop().run_until_complete(main())
+            print(listOfChallenges)
+            return listOfChallenges
         except:
-            print("error to go on the trending page. Retrying...")
+            print("error to get list of challenges on the trending page. Retrying...")
             time.sleep(10)
             asyncio.get_event_loop().run_until_complete(main())
-        return 1
 
-    def getChallengesList():
-        """function to retrieve the list of current challenges url
-        INPUT:
-        OUTPUT: list of all th current challenges link
-        """
-        print("Getting the list of challenge...")
-        #setting the headers where the User-Agent have to be the same as the one used by pupeteer
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3494.0 Safari/537.36",
-                "Accept-Encoding": "gzip, deflate, br"}
-        #store all the cookies
-        session = requests.Session()
-        try:
-            #make the request to get the list of challenge
-            r = session.get(url = discoverUrl, headers=headers)
-        except:
-            print("error to get list of challenge. Retrying...")
-            time.sleep(60)
-            getChallengesList()
-
-        data = r.json()
-        listOfLinks = []
-        listOfChallengeData = []
-        if 'body' in data:
-            for challenge in data['body'][2]['exploreList']:
-                if challenge['cardItem']['type'] == 1: #check that it is a music challenge type
-                    listOfLinks.append('https://www.tiktok.com'+challenge['cardItem']['link'])
-                    dic = {}
-                    dic['link'] = 'https://www.tiktok.com'+challenge['cardItem']['link']
-                    dic['musicId'] = challenge['cardItem']['extraInfo']['musicId']
-                    dic['numberOfVideos'] = challenge['cardItem']['extraInfo']['posts']
-                    dic['challengeUsed'] = False
-                    dic['challengeUsedDate'] = ''
-                    listOfChallengeData.append(dic)
-                else:
-                    print("wrong type in discover")
-        else:
-            print("no body in discover data")
-        saveListOfChallenge(listOfChallengeData)
-        return listOfLinks
-
-    def saveListOfChallenge(listOfChallengeData):
-        print("Saving the list of challenge...")
-        #putting list of challenge into a DF
-        DFChallengeData = pd.DataFrame.from_dict(listOfChallengeData)
-        DFChallengeData.set_index('musicId', inplace=True)
-        #loading list of challenge from txt
-        with open('listChallenge.txt','r') as f:
-            videos_dict = json.load(f)
-        challengeDB = pd.DataFrame.from_dict(videos_dict)
-        #Using the music ID as DF index
-        challengeDB.set_index('musicId', inplace=True)
-        #adding all the data that are not in DB = insert
-        challengeDB = pd.concat([challengeDB, DFChallengeData[~DFChallengeData.index.isin(challengeDB.index)]])
-        #removing the columns that don't have to be updated
-        DFChallengeData.drop(['challengeUsed', 'challengeUsedDate'], axis=1, inplace=True)
-        #updating the data = updating only the numbers
-        challengeDB.update(DFChallengeData)
-        #putting back the index as a column to have it in the export
-        challengeDB['musicId'] = challengeDB.index
-        #saving DF as json into file
-        challengeDB.to_json(r'listChallenge.txt',orient="records")
-
-    def getChallengeUrl(urlChallenge):
-        """function to retrieve the data urls for each challenge using pyppeteer
+    def getChallengeData(urlChallenge):
+        """function to intercept the request with challenge data
         INPUT: challenge urls
-        OUTPUT: challenge datas urls
+        OUTPUT: challenge video data
         """
-        print("Getting the challenge data url...")
-        urlList = []
+        print("Getting the challenge data...")
+        listOfVideoDic = []
 
-        def checkUrlChallenge(url):
+        def processDataRequest(requestData):
+            """function to process the data from the trending request
+            INPUT: response from trending request
+            OUTPUT: list of dictionnary with processed video data
+            """
+            try:
+                data = requestData
+                if 'body' in data:
+                    for video in data['body']['itemListData']:
+                        #extracting the info we want to save
+                        dic = {}
+                        dic['id'] = video['itemInfos']['id']
+                        dic['musicId'] = video['itemInfos']['musicId']
+                        dic['timeCreated'] = video['itemInfos']['createTime']
+                        dic['likeCount'] = video['itemInfos']['diggCount']
+                        dic['shareCount'] = video['itemInfos']['shareCount']
+                        dic['playCount'] = video['itemInfos']['playCount']
+                        dic['commentCount'] = video['itemInfos']['commentCount']
+                        dic['videoUsed'] = False
+                        dic['videoUsedDate'] = ''
+                        print(dic)
+                        listOfVideoDic.append(dic)
+            except Exception as e:
+                print(e)
+
+        async def interceptResponse(response):
+            url = response.url
+            if not response.ok:
+                print('request %s failed' % url)
+                return
             pattern = re.compile("https://m.tiktok.com/share/item/list\?secUid.*")
             if pattern.match(url):
-                urlList.append(url)
-            else:
-                pass
-                #print('not found')
+                try:
+                    json_data = await response.json()
+                    #listOfVideoDic.extend(processDataRequest(json_data))
+                    processDataRequest(json_data)
+                except Exception as e:
+                    print("error to parse json")
+                    print(e)
 
         async def main():
             """function to launch the browser and capture all the request that are being made by the tiktok page to tget the url with signature
@@ -327,15 +401,17 @@ def importChallengeDataToDB():
             browser = await launch({'headless': True})
             page = await browser.newPage()
             #removing the timeout
-            page.setDefaultNavigationTimeout(20000)
+            page.setDefaultNavigationTimeout(100000)
             #adding the stealth mode to be undetected
             await stealth(page)
-            #capture the url of every request and save the ones we want
-            page.on('request', lambda request: checkUrlChallenge(request.url))
+            global userAgent
+            userAgent = await page.evaluate('navigator.userAgent')
+            #capture the response of every request and save the ones we want
+            page.on('response', lambda response: asyncio.ensure_future(interceptResponse(response)))
             await page.goto(urlChallenge)
             await page.waitFor(1000)
             #scroll down to trigger the requests to get video data
-            for _ in range(1):
+            for _ in range(5):
                 await page.evaluate("""{window.scrollBy(0, document.body.scrollHeight);}""")
                 await page.waitFor(1000)
             await page.waitFor(3000)
@@ -343,64 +419,12 @@ def importChallengeDataToDB():
 
         try:
             asyncio.get_event_loop().run_until_complete(main())
-            return urlList
-        except:
-            print("Error to get the challenge url data")
-            return urlList
-
-    def processDataRequest(requestData):
-            """function to process the data from the trending request
-            INPUT: response from trending request
-            OUTPUT: list of dictionnary with processed video data
-            """
-            listOfVideoDic = []
-            data = requestData.json()
-            if 'body' in data:
-                for video in data['body']['itemListData']:
-                    #extracting the info we want to save
-                    dic = {}
-                    dic['id'] = video['itemInfos']['id']
-                    dic['musicId'] = video['itemInfos']['musicId']
-                    dic['timeCreated'] = video['itemInfos']['createTime']
-                    dic['likeCount'] = video['itemInfos']['diggCount']
-                    dic['shareCount'] = video['itemInfos']['shareCount']
-                    dic['playCount'] = video['itemInfos']['playCount']
-                    dic['commentCount'] = video['itemInfos']['commentCount']
-                    dic['videoUsed'] = False
-                    dic['videoUsedDate'] = ''
-                    listOfVideoDic.append(dic)
+            #print(listOfVideoDic)
             return listOfVideoDic
-
-    def getChallengeVideoData(challengeUrlDic):
-        """function to make the request to retrieve video data for all the challenge and call the function to process it
-        INPUT: dic containing all the challenge data url where the challenges are the key
-        OUTPUT: sending the response to function to process data
-        """
-        print("Getting the challenge video data...")
-        listOfVideoDic = []
-        #looping through each challenge and data url
-        for challenge in challengeUrlDic:
-            for url in challengeUrlDic[challenge]:
-                time.sleep(1)
-                #setting the headers where the User-Agent have to be the same as the one used by pupeteer
-                headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3494.0 Safari/537.36",
-               "Accept-Encoding": "gzip, deflate, br"}
-                #store all the cookies
-                session = requests.Session()
-                try:
-                    #make the request type 1 for trending data
-                    requestData = session.get(url = url, headers=headers)
-                    listOfVideoDic.extend(processDataRequest(requestData))
-                except:
-                    print("Error to get data for challenge")
-
-        #transforming list of dic into df
-        newDataDF = pd.DataFrame(listOfVideoDic)
-        #dropping the duplicates (appeared in API update why ?)
-        newDataDF.drop_duplicates(subset='id',inplace=True,keep='last') 
-        #setting the index with the id
-        newDataDF.set_index('id', inplace=True)
-        return newDataDF
+        except Exception as e:
+            print(e)
+            print("Error to get the challenge url data")
+            return listOfVideoDic
 
     def updateInsertDB(newData):
         
@@ -424,16 +448,19 @@ def importChallengeDataToDB():
         print("Total number of records:", numNewRecord)
         return DB
 
-    challengeUrlDic = {}
-    #save discover url in global variable
-    getDiscoverUrl()
-    #get the list of music challenges url
+    #get the list of challenge urls
     challengeList = getChallengesList()
     #looping through each challenge and getting the data url for each challenge
+    listOfVideoDic = []
     for challenge in challengeList:
-         challengeUrlDic[challenge] = getChallengeUrl(challenge)
-    #print(challengeUrlDic)
-    newDataDF = getChallengeVideoData(challengeUrlDic)
+        time.sleep(10) #time between each request
+        listOfVideoDic.extend(getChallengeData(challenge))
+    #transforming list of dic into df
+    newDataDF = pd.DataFrame(listOfVideoDic)
+    #dropping the duplicates (appeared in API update why ?)
+    newDataDF.drop_duplicates(subset='id',inplace=True,keep='last') 
+    #setting the index with the id
+    newDataDF.set_index('id', inplace=True)
     #merging new data in DB
     DB = updateInsertDB(newDataDF)
     #putting back the index as a column to have it in the export
@@ -441,88 +468,122 @@ def importChallengeDataToDB():
     #saving DF as json into file
     DB.to_json(r'dataVideoChallenge.txt',orient="records")
 
-def loadDbIntoDf(file):
+def loadDbIntoDf2(content):
     """
-        Function that load the json file with all the data and treat them to return
-        original dataframe and a shorter one and likeCount,commentCount,...
-        columns rescalled for the score calculation.
+        Function that load the json file into a DF
         INPUT: json file
         OUTPUT; dataframes and columns
     """
-    #Loading data
+    #Loading data into DF
+    if content == 'trending':
+        file = 'dataVideo.txt'
+    elif content == 'music':
+        file = 'dataVideoChallenge.txt'
+    else:
+        file = 'dataVideo.txt'
     with open(file,'r') as f:
         videos_dict = json.load(f)
     df = pd.DataFrame.from_dict(videos_dict)
-    df_shorter = df[df.videoUsed == False] #take only videos no used before
-    df_shorter = df_shorter[df_shorter.id != '6815763642621889797']
-    df_shorter = df_shorter[df_shorter.id != '6810425865206304006']
-    df_shorter = df_shorter.drop(columns=['timeCreated','videoUsed','videoUsedDate'])
-    columns_name = ['id','commentCount','likeCount','playCount','shareCount']
-    df_shorter = df_shorter.reindex(columns=columns_name)
-    df_shorter = df_shorter.apply(lambda x: x/x.max() if x.name in columns_name[1:] else x)
-    return df,df_shorter
+    #filter on challenge
+    if content == 'music':
+        df = df[df.musicId == "6745161928949106690"]
+    return df
 
-def select(df_shorter,nbvideos):
+def selectTop(dfProcess,period,periodNumber,ranking):
     """
-        Function to select a range of best videos according to the value of its score
-        defined as combinaton of likeCount, playCount, shareCount and commentCount
-        INPUT: DataFrame
+        Function to select the top videos for a given period and a given scoring system
+        INPUT: DataFrame, period: month/week, ranking: trending/shared/like/view
         OUTPUT: New DataFrame  with only x top videos sorted by score
 
     """
-    score = (35/100 * df_shorter['likeCount'] + 20/100*df_shorter['playCount'] + 35/100* df_shorter['shareCount']
-    + 10/100*df_shorter['commentCount'])*100
-    df_shorter['score'] = score
-    df_shorter = df_shorter.sort_values('score',ascending=False)
-    df_shorter = df_shorter.head(nbvideos)
-    #print(df_shorter)
-    return df_shorter
+    #creating new columns
+    dfProcess['timeCreated'] = pd.to_datetime(dfProcess['timeCreated'], unit='s')
+    if period == 'week':
+        dfProcess['weekNumber'] = dfProcess['timeCreated'].dt.week
+        dfProcess = dfProcess[dfProcess.weekNumber == periodNumber]
+    elif period == 'month':
+        dfProcess['monthNumber'] = dfProcess['timeCreated'].dt.month
+        dfProcess = dfProcess[dfProcess.monthNumber == periodNumber]
+    else:
+        print("Period parameter is unknown")
+    #select useful columns
+    columns_name = ['id','commentCount','likeCount','playCount','shareCount']
+    dfProcess = dfProcess[columns_name]
+    #calculating score
+    dfProcess = dfProcess.apply(lambda x: x/x.max() if x.name in columns_name[1:] else x) #normalisation
+    if ranking == 'trending':
+        score = (35/100 * dfProcess['likeCount'] + 20/100*dfProcess['playCount'] + 35/100* dfProcess['shareCount']
+    + 10/100*dfProcess['commentCount'])*100
+    elif ranking == 'share':
+        score = dfProcess['shareCount']
+    elif ranking == 'like':
+        score = dfProcess['likeCount']
+    elif ranking == 'view':
+        score = dfProcess['playCount']
+    else:
+        print('ranking unknown')
+        score = dfProcess['playCount']
+    dfProcess['score'] = score
+    #selecting top
+    dfProcess = dfProcess.sort_values('score',ascending=False)
+    dfProcess = dfProcess.head(50)
+    return dfProcess
 
 def generateLinkFromId(videoId):
     """
         function to generate a valid link to download a video from a video ID. Link is extracted from html trending page
     INPUT: video ID
     OUTPUT: valid video link
-
     """
     page = requests.get('https://www.tiktok.com/embed/v2/'+videoId+'?lang=en')
     tree = html.fromstring(page.content)
     buyers = tree.xpath('//*[@id="main"]/div/div/div[1]/div/div/div/div[2]/div[1]/video/@src')
-    return buyers[0]
+    if len(buyers) > 0:
+        return buyers[0]
+    else:
+        return False
 
-def download(df_shorter):
+def download(df_shorter,folderName):
     """
-        Functions to download videos selected using urls.
+        Functions to download videos given their ID.
         INPUT: DataFrame
-        OUTPUT: list of videos dowloaded and stored on the folder
+        OUTPUT: list of videos dowloaded and stored in the folder
     """
-    path = os.getcwd()+'\\'
+    os.mkdir(str(folderName))
+    path = os.getcwd()+'\\'+str(folderName)+'\\'
+    #add column with video link generated from IDs
     df_shorter['urls'] = df_shorter['id'].apply(lambda x: generateLinkFromId(x))
     vid_dl = []
     i = 1
-    for u in df_shorter['urls']:
-        name = str(i)+'.mp4'
-        vid_dl.append(wget.download(u,path+name))
-        i = i+1
+    for url in df_shorter['urls']:
+        if url != False:
+            name = str(i)+'.mp4'
+            vid_dl.append(wget.download(url,path+name))#retrun the path of the saved video
+            i = i+1
     return vid_dl
 
-def merge(vidlist):
+def merge(vidlist,weekNumber):
     """
         Function to merge videos dowloaded in one video.
         INPUT: list of videos downloaded
         OUTPUT: One video (not stored as variable)
     """
+    #generate day for file name
     today = date.today()
     d = today.strftime("%Y_%m_%d")
+    #resizing video
     clips = []
     for vid in vidlist:
         if vid.endswith(".mp4"):
-            clips.append(VideoFileClip(vid))
-    m = max(c.h for c in clips)
-    clips = [c.resize(height=m) for c in clips]
-    #print(clips[0].size)
+            video = VideoFileClip(vid)
+            ratio = video.h / video.w
+            if ratio < (16/9 - 0.01):
+                video = video.resize(width=1080)
+            else:
+                video = video.resize(height=1920)
+            clips.append(video)
     finalrender = concatenate_videoclips(clips,method='compose')
-    finalrender.write_videofile('TiktokCompile'+d+'.mp4',codec='libx264')
+    finalrender.write_videofile(str(weekNumber)+'.mp4',codec='libx264')
 
 def update(df,df_shorter):
     """
@@ -534,63 +595,47 @@ def update(df,df_shorter):
     for id in df_shorter['id']:
         df.loc[df['id'] == id,'videoUsed'] = True
         df.loc[df['id'] == id,'videoUsedDate'] = d
-    #print(df)
     df.to_json(r'dataVideo.txt',orient="records")
 
 def importData():
-    ### Import new challenge data in the DB ###
-    importChallengeDataToDB()
-    #importTrendingDataToDB()
+    """
+    function that call the different function to get video data
+    """
+    #importChallengeDataToDB()
+    importTrendingDataToDB()
 
 def makeVideo():
-    ### Import and manip dataVideo ###
-    df,df_shorter = loadDbIntoDf('dataVideo.txt')
-    print('Initialization is done...')
-    print('')
-    ##################
-    ### Processing ###
-    ##################
+    """
+    function that call the different function to make a video
+    """
+    weekNumber = 11
+    for _ in range(10):
+        df = loadDbIntoDf2('trending')
+        df_copy = df.copy()
+        df_shorter = selectTop(df_copy,'week',weekNumber , 'trending')
+        vid_dl = download(df_shorter,weekNumber)
+        merge(vid_dl,weekNumber)
+        weekNumber = weekNumber + 1
 
-    print('##################')
-    print('### Processing ###')
-    print('##################')
-    print('')
-
-    ### Select x best videos and download them ###
-    df_shorter = select(df_shorter,20)
-    vid_dl = download(df_shorter)
-
-    ### merge videos ###
-    merge(vid_dl)
-
-    ### Check ID of selected videos and updtate videoUsed status ###
-    update(df,df_shorter)
-
-######################
-### Initialization ###
-######################
 start_time = time.time()
-print('######################')
-print('### Initialization ###')
-print('######################')
 
 ### Global variable for the trending urls (should be avoided) ###
 trendingUrl1 = ''
 trendingUrl2 = ''
 discoverUrl = ''
+userAgent = '' #will contain the user agent of chromium
 
-for _ in range(100):
-    importData()
-    time.sleep(1) #time between each request
-    #makeVideo()
+#loop to import data
+# for _ in range(200):
+#     start_time = time.time()
+#     importData()
+#     time.sleep(1) #time between each request
+#     print("--- %s seconds ---" % (time.time() - start_time))
 
-    print('Processing is done... ')
-    print("--- %s seconds ---" % (time.time() - start_time))
-    print('')
 #makeVideo()
-print('############')
-print('### DONE ###')
-print('############')
+# print("--- %s seconds ---" % (time.time() - start_time))
 
-############
-### Publish on YT ###
+# https://www.tiktok.com/node/share/video/@mrbeast/6804065248375508230
+#filterTrendingVideo()
+updateDB()
+# print("--- %s seconds ---" % (time.time() - start_time))
