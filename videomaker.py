@@ -185,7 +185,10 @@ def importTrendingDataToDB():
         session = requests.Session()
         #make the request type 1 for trending data
         try:
+            rep = session.get(url = 'https://www.tiktok.com/trending?lang=en', headers=headers)
             requestData = session.get(url = trendingUrl1, headers=headers)
+            #print(requestData.headers)
+            #print(session.cookies.get_dict())
         except:
             print("Error with the first request to get trending data")
 
@@ -193,19 +196,23 @@ def importTrendingDataToDB():
         listOfVideoDic = processDataRequest(requestData)       
 
         #make the request  type 2 x times
-        for _ in range(120):
+        for _ in range(200):
             #print('request')
             time.sleep(1) #time between each request
             try:
                 requestData = session.get(url = trendingUrl2, headers=headers)
+                #print(requestData.headers)
+                #print(session.cookies.get_dict())
             except:
                 print("Error to get the trending data")
             #merge result with list of dictionnary
             listOfVideoDic.extend(processDataRequest(requestData))
         #transforming list of dic into df
         newDataDF = pd.DataFrame(listOfVideoDic)
+        print("Number of row:", newDataDF.shape[0])
         #dropping the duplicates (appeared in API update why ?)
-        newDataDF.drop_duplicates(subset='id',inplace=True,keep='last') 
+        newDataDF.drop_duplicates(subset='id',inplace=True,keep='last')
+        print("Number of row without duplicates:", newDataDF.shape[0])
         #setting the index with the id
         newDataDF.set_index('id', inplace=True)
         return newDataDF
@@ -626,11 +633,11 @@ discoverUrl = ''
 userAgent = '' #will contain the user agent of chromium
 
 #loop to import data
-# for _ in range(200):
-#     start_time = time.time()
-#     importData()
-#     time.sleep(1) #time between each request
-#     print("--- %s seconds ---" % (time.time() - start_time))
+for _ in range(200):
+    start_time = time.time()
+    importData()
+    time.sleep(1) #time between each request
+    print("--- %s seconds ---" % (time.time() - start_time))
 
 #makeVideo()
 # print("--- %s seconds ---" % (time.time() - start_time))
